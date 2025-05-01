@@ -1,0 +1,117 @@
+---
+title: "hypothesis testing"
+output: html_document
+date: "2025-04-24"
+---
+
+```{r}
+library(tidyverse)  
+df <- read.csv("/Users/amycai/Desktop/merged_summary.csv", stringsAsFactors = FALSE)
+df$genre <- factor(df$genre)
+df <- df %>% filter(genre != "1")
+  
+
+genre_stats <- df %>% 
+  group_by(genre) %>% 
+  summarise(
+    n_release = n(),
+    mean_dur  = mean(mean_duration_sec, na.rm = TRUE),
+    sd_dur    = sd(mean_duration_sec,   na.rm = TRUE)
+  )
+
+outliers <- which(df$mean_duration_sec > 10000)
+df_clean <- df %>% filter(mean_duration_sec <= 10000)
+
+df %>% 
+  filter(mean_duration_sec < 1e4) %>% 
+  ggplot(aes(x = genre, y = mean_duration_sec)) +
+  geom_boxplot(
+    fill = "lightgray",
+    color = "darkgray",
+    outlier.shape = NA,
+    width = 0.6
+  ) +
+  
+  geom_jitter(
+    width = 0.2, 
+    size  = 1, 
+    alpha = 0.4, 
+    color = "steelblue"
+  ) +
+  
+  coord_flip() +
+  labs(
+    title = "Release",
+    x     = NULL,
+    y     = "Mean Duration per Release (sec)"
+  ) +
+  
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title       = element_text(hjust = 0.5, size = 14, face = "bold"),
+    axis.text.y      = element_text(size = 10), 
+    axis.text.x      = element_text(size = 10),
+    panel.grid.major = element_line(color = "gray90"),
+    panel.grid.minor = element_blank()
+  )
+
+```
+
+```{r}
+
+aov2 <- aov(mean_duration_sec ~ genre, data = df_clean)
+
+tukey_mat <- TukeyHSD(aov2)$genre
+library(tibble)
+tukey_df <- as.data.frame(tukey_mat) %>%
+  rownames_to_column("comparison") %>%
+  rename(
+    diff  = diff,
+    lower = lwr,
+    upper = upr,
+    p.adj = `p adj`
+  ) %>%
+  mutate(
+    signif = p.adj < 0.05,
+    ypos   = row_number()
+  )
+
+summary(aov2)   
+TukeyHSD(aov2)$genre
+```
+
+```{r}
+tukey_sig <- tukey_df %>% 
+  filter(signif)
+
+library(dplyr)
+library(ggplot2)
+
+genre_sum <- df_clean %>% 
+  group_by(genre) %>% 
+  summarise(
+    mean_dur = mean(mean_duration_sec),
+    se_dur   = sd(mean_duration_sec) / sqrt(n()),
+    n        = n()
+  ) %>% 
+  arrange(mean_dur) %>% 
+  mutate(genre = factor(genre, levels = genre))
+
+ggplot(genre_sum, aes(x = genre, y = mean_dur)) +
+  geom_col(fill = "steelblue") +
+  geom_errorbar(aes(ymin = mean_dur - se_dur, ymax = mean_dur + se_dur),
+                width = 0.2, color = "darkblue") +
+  coord_flip() +
+  labs(
+    title = "Mean duration (seconds) and standard error of Release by genre误",
+    x     = NULL,
+    y     = "Mean Duration (sec)"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    axis.text.y = element_text(size = 10),
+    plot.title  = element_text(hjust = 0.5, face = "bold")
+  )
+
+
+```

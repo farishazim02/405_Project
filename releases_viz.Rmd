@@ -1,0 +1,561 @@
+---
+title: "405 Project"
+author: "Faris Hazim Mohamed Zaimir (mohamedzaimi@wisc.edu)"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(warnings = FALSE, message = FALSE)
+```
+
+
+```{r}
+rm(list = ls())
+
+library("tidyverse")
+library("patchwork")
+library("scales")
+library("cowplot")
+library("ggraph")
+library("tidygraph")
+library("survival")
+library("survminer")
+
+my_theme <- theme_minimal() +
+  theme(
+    axis.text = element_text(size = 12, color = "black"),
+    axis.title = element_text(size = 14, color = "black", face = "plain"),
+    title = element_text(size = 14, color = "black", face = "bold"),
+    legend.text = element_text(size = 12, color = "black"),
+    legend.title = element_text(
+      color = "black",
+      size = 14, margin =
+        ggplot2::margin(t = 0, r = 0, b = 0, l = 0, unit = "pt")
+    ),
+    strip.text = element_text(size = 12, color = "black"),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank(),
+    panel.spacing = unit(15, "pt"),
+    axis.line = element_line(colour = "black"),
+    panel.grid = element_line(color = "#f3f6f4"),
+    legend.position = "bottom"
+  )
+
+theme_set(my_theme)
+
+
+options(warn = -1)
+```
+
+
+### Load data
+
+```{r}
+# Load and clean data
+trend_genre_releases <- read_csv("trend_genre_releases.csv") %>% 
+  mutate(year_release = ifelse(year_release == "١٩٩٤", 1994, year_release)) %>% 
+  mutate(year_release = ifelse(year_release == "２０１２", 2012, year_release)) %>% 
+  mutate(year_release = as.numeric(year_release)) %>%
+  filter(year_release >= 1925) %>% 
+  filter(year_release < 2025) %>% 
+  group_by(year_release, genres) %>% 
+  summarize(n = sum(n)) %>% 
+  arrange(year_release, desc(n))
+
+trend_points_genre <- trend_genre_releases %>%
+  filter(year_release %% 10 == 5)
+
+trend_points_year <- trend_points_genre %>%
+  group_by(year_release) %>% 
+  summarize(n = sum(n))
+
+trend_year <- trend_genre_releases %>% 
+  group_by(year_release) %>% 
+  summarize(n = sum(n))
+
+```
+
+### Graphing the trend
+
+```{r, fig.width = 9, fig.height = 5}
+
+p <- list()
+
+# https://www.newwavemagazine.com/single-post/the-rise-of-technology-in-music-from-vinyl-to-streaming-services
+# https://www.weforum.org/stories/2023/03/charted-the-impact-of-streaming-on-the-music-industry/
+p[[1]] <- ggplot(trend_year, aes(x = year_release, y = n)) +
+  geom_line(linewidth = 1, color = "deepskyblue4", alpha = 0.8) +
+  geom_point(data = trend_points_year,
+             aes(x = year_release, y = n),
+             shape = 21, size = 2.5, fill = "black", color = "deepskyblue4",
+             alpha = 0.8) +
+  scale_y_log10(labels = label_number(scale = 1e-3, suffix = "K"),
+                expand = c(0.01, 0.01, 0, 0.01)) +
+  scale_x_continuous(breaks = seq(1925, 2025, 10)) +
+  labs(y = "Number of Releases (log scale)",
+       x = "Year",
+       title = "Overall Music Releases in the Past 100 Years") +
+  theme(panel.grid.major.x = element_blank()) +
+  annotate("segment", x = 1950, y = 4300, xend = 1945.5, yend = 3200,
+         arrow = arrow(type = "closed", length = unit(0.02, "npc"))) +
+  annotate("text", x = 1963, y = 5200, label = "Peak of World War 2 (1942-1943)") +
+  annotate("segment", x = 2015, y = 250000, xend = 2020, yend = 320000,
+         arrow = arrow(type = "closed", length = unit(0.02, "npc"))) +
+  annotate("text", x = 2013, y = 195000, label = "COVID-19 Pandemic +\nEconomic Factors")
+
+p[[1]]
+
+ggsave("overall_trend.png")
+
+```
+
+```{r, fig.width = 13, fig.height = 5}
+
+legend_genres <- c("Electronic", "Rock", "Hip Hop", "Pop", "Jazz", "Folk, World, & Country")
+
+genre_colors <- c(
+  "Electronic" = "springgreen4",
+  "Rock" = "#E2D200",
+  "Hip Hop" = "#46ACC8",
+  "Pop" = "#E58601",
+  "Jazz" = "#B40F20",
+  "Folk, World, & Country" = "magenta4"
+)
+
+genre_21st <- trend_genre_releases %>% 
+  filter(year_release >= 2000 & year_release < 2025) %>% 
+  filter(genres %in% legend_genres) %>%
+  mutate(genres = factor(genres, levels = legend_genres),
+         show_line = genres %in% c("Electronic", "Rock", "Hip Hop", "Pop", "Jazz"))
+
+p[[2]] <- genre_21st %>% 
+  ggplot(aes(x = year_release, y = n, color = genres)) +
+  geom_line(data = genre_21st %>% filter(show_line), show.legend = F, linewidth = 1, alpha = 0.8) +
+  labs(x = "Year", y = "",
+       title = "Since the 21st Century (2000 - 2024)", color = "") +
+  theme(panel.grid.major.x = element_blank(),
+        plot.title = element_text(size = 14)) +
+  scale_x_continuous(breaks = seq(2000, 2025, 5)) +
+  scale_y_continuous(labels = label_number(scale = 1e-3, suffix = "K"),
+                expand = c(0.01, 0.01, 0, 0.01)) +
+  scale_color_manual(values = genre_colors)
+
+
+genre_20th <- trend_genre_releases %>% 
+  filter(year_release < 2000 & year_release >= 1925) %>% 
+  filter(genres %in% legend_genres) %>%
+  mutate(genres = factor(genres, levels = legend_genres),
+         show_line = genres %in% c("Rock", "Electronic", "Pop", "Jazz", "Folk, World, & Country"))
+
+  
+p[[3]] <- genre_20th %>% 
+  ggplot(aes(x = year_release, y = n, color = genres)) +
+  geom_line(data = genre_20th %>% filter(show_line), show.legend = F, linewidth = 1, alpha = 0.8) +
+  labs(x = "Year", y = "Number of Releases",
+       title = "Before the 21st Century (1925 - 1999)", color = "") +
+  theme(panel.grid.major.x = element_blank(),
+        plot.title = element_text(size = 14)) +
+  scale_x_continuous(breaks = seq(1925, 2000, 10)) +
+  scale_y_continuous(labels = label_number(scale = 1e-3, suffix = "K"),
+                expand = c(0.01, 0.01, 0, 0.01)) +
+  scale_color_manual(values = genre_colors)
+
+plot_genre <- p[[3]] + p[[2]] +
+  plot_annotation(title = "Evolution of Music Genre Popularity") +
+  theme(title = element_text(size = 16))
+
+legend_df <- data.frame(genre = factor(legend_genres, levels = legend_genres))
+
+legend_plot <- ggplot(legend_df, aes(x = genre, y = 1, color = genre)) +
+  geom_line(linewidth = 1) +
+  scale_color_manual(values = genre_colors) +
+  labs(color = "")
+  
+legend_grob <- ggplotGrob(legend_plot)
+guide_index <- which(legend_grob$layout$name == "guide-box-bottom")
+my_legend  <- legend_grob$grobs[[guide_index]]
+
+
+final_plot <- ggdraw() +
+  draw_plot(plot_genre, 0, 0.12, 1, 0.88) +  
+  draw_grob(my_legend, 0.08, 0, 1, 0.12)
+
+final_plot
+
+ggsave("genre_evolution.svg")
+
+```
+
+
+```{r, fig.width = 9, fig.height = 5}
+artist_ntracks <- read_csv("artist_ntracks_releases.csv")
+
+set.seed(405)
+
+sampled_artist_ntracks <- artist_ntracks %>% 
+  filter(n_tracks < 50 & n_artists < 50) %>% 
+  filter(!(n_tracks > 17 & n_artists < 13)) %>%
+  filter(!str_detect(artists_artist_name, "Various")) %>% 
+  filter(!str_detect(artists_artist_name, "Unknown Artist")) %>% 
+  filter(!str_detect(artists_artist_name, "No Artist")) %>% 
+  slice_sample(n = 500000, replace = F) 
+  
+corr_artist_ntracks <- cor(artist_ntracks$n_artists, artist_ntracks$n_tracks)
+
+ggplot(sampled_artist_ntracks) +
+  geom_point(aes(x = n_artists, y = n_tracks), color = "deepskyblue4", 
+             alpha = 0.8) +
+  geom_smooth(aes(x = n_artists, y = n_tracks), method = "lm", alpha = 0.6, color = "#C5050C") +
+  scale_y_continuous(expand = c(0.01, 0.01, 0.01, 0.1)) +
+  scale_x_continuous(expand = c(0.01, 0.01, 0.01, 0.1)) +
+  theme(panel.grid.major.x = element_blank(),
+        plot.subtitle = element_text(face = "plain")) +
+  labs(x = "Number of Artists", y = "Tracklist Length",
+       title = "Correlation between Number of Artists & Tracklist Length",
+       subtitle = "Based on a sample of 500,000 releases") +
+  annotate(
+    "label",
+    x = 1.5,  
+    y = 46,
+    label = paste0("r = ", round(corr_artist_ntracks, 2)),
+    size = 4.5,
+    color = "black",
+    hjust = 0)
+
+ggsave("correlation_artists_tracks.svg")
+
+```
+
+
+```{r, fig.width = 9, fig.height = 5}
+extract_artists <- function(row) {
+  if (str_starts(row, "\\[")) {
+    first_artist <- str_match(row, '^\\["([^"]+)"')
+    return(first_artist[, 2])
+  }
+  
+  return(str_trim(row))
+}
+
+count_artists <- artist_ntracks %>% 
+  mutate(first_artist = map_chr(artists_artist_name, extract_artists)) %>% 
+  count(first_artist) %>% 
+  arrange(desc(n))
+  
+
+count_artists <- read_csv("top_artist_releases.csv")
+
+artist_plot <- count_artists %>% 
+  filter(!(first_artist %in% c("Various", "Unknown Artist", "No Artist"))) %>% 
+  head(10) %>% 
+  ggplot(aes(x = n, y = reorder(first_artist, n))) +
+  geom_col(color = "black", fill = "deepskyblue4", alpha = 0.8) +
+  scale_x_continuous(label = label_number(scale = 1e-3, suffix = "K"), expand = c(0, 0)) +
+  theme(panel.grid.major.y = element_blank()) +
+  labs(y = "Artist", x = "Number of Releases",
+       title = "By Artist") +
+  theme(plot.title = element_text(size = 14))
+
+artist_plot
+
+#ggsave("artist_most_releases.svg")
+
+```
+
+
+```{r, fig.width = 9, fig.height = 5}
+
+labels_top <- read_csv("top_labels_releases.csv") %>% 
+  group_by(release_labels_label_name) %>% 
+  summarize(total = sum(counts)) %>% 
+  arrange(desc(total)) %>% 
+  filter(!(release_labels_label_name %in% c("Not On Label")))
+
+label_plot <- labels_top %>% 
+  head(10) %>% 
+  ggplot(aes(x = total, y = reorder(release_labels_label_name, total))) +
+  geom_col(color = "black", fill = "orangered2", alpha = 0.8) +
+  scale_x_continuous(label = label_number(scale = 1e-3, suffix = "K"), expand = c(0, 0)) +
+  theme(panel.grid.major.y = element_blank(),
+        plot.title = element_text(size = 14)) +
+  labs(y = "Label", x = "Number of Releases",
+       title = "By Label")
+
+label_plot
+
+```
+
+
+```{r, fig.width = 12, fig.height = 5}
+
+artist_plot + label_plot +
+  plot_annotation(title = "Artists and Labels with the Most Releases")
+
+
+ggsave("artist_labels_most_releases.svg")
+
+```
+
+
+
+```{r, fig.width = 12, fig.height = 5}
+network_artist_genre <- read_csv("network_releases.csv")
+
+top_network_artist <- network_artist_genre %>% 
+  drop_na() %>% 
+  filter(!(genre %in% c("Non-Music", "Brass & Military", "Children's", "1"))) %>% 
+  filter(!(artists_artist_name %in% c("Various", "Unknown Artist", "No Artist", "\\",
+                                      "Albert Wieder", "Hans Zimmer", "Ena Pá 2000",
+                                      "James Last", "Elvis Costello", "Ennio Morricone",
+                                      "GANGI", "Brittle Brian", "Henri Salvador"))) %>%
+  group_by(artists_artist_name) %>% 
+  summarize(n_genres = n_distinct(genre)) %>%
+  ungroup() %>% 
+  arrange(desc(n_genres)) %>% 
+  filter(artists_artist_name %in% c("Elvis Presley", "Madonna", "Elton John",
+                                    "Aretha Franklin", "David Bowie", "Frank Sinatra", "Kelly Clarkson", 
+                                    "The Beatles", "Amy Winehouse", "Céline Dion"))
+
+p2 <- list()
+
+
+
+p2[[1]] <- top_network_artist %>% 
+  ggplot(aes(x = n_genres, y = reorder(artists_artist_name, n_genres))) +
+  geom_col(color = "black", fill = "deepskyblue4", alpha = 0.8) +
+  scale_x_continuous(expand = c(0, 0, 0.01, 0.01)) +
+  theme(panel.grid.major.y = element_blank(),
+        plot.title = element_text(size = 14)) +
+  labs(y = "Artist", x = "Number of Distinct Genres",
+       title = "Top 10 Most Genre-Diverse Artists")
+
+
+
+
+p2[[2]] <- network_artist_genre %>% 
+  filter(!(genre %in% c("Non-Music", "Brass & Military", "Children's", "1"))) %>% 
+  filter(artists_artist_name %in% c("Elvis Presley", "Madonna", "Elton John",
+                                    "Aretha Franklin", "David Bowie", "Frank Sinatra", "Kelly Clarkson", 
+                                    "The Beatles", "Amy Winehouse", "Céline Dion")) %>% 
+  distinct(artists_artist_name, genre, .keep_all = T) %>% 
+  select(-release_genres_genre) %>% 
+  group_by(genre) %>% 
+  summarize(common_genres = n()) %>% 
+  arrange(desc(common_genres)) %>% 
+  ggplot(aes(x = common_genres, y = reorder(genre, common_genres))) +
+  geom_col(color = "black", fill = "orangered2", alpha = 0.8) +
+  scale_x_continuous(breaks = seq(0, 10, 2), expand = c(0, 0, 0.01, 0.01)) +
+  theme(panel.grid.major.y = element_blank(),
+        plot.title = element_text(size = 14)) +
+  labs(y = "Genre", x = "Number of Artists",
+       title = "Most Common Genres Among\nthe 10 Most Genre-Diverse Artists")
+
+
+network_artist_genre
+
+
+p2[[1]] + p2[[2]] +
+  plot_annotation(title = "Genre Diversity (All Time)")
+
+ggsave("genre_diversity.svg")
+```
+
+
+
+```{r, fig.width = 14, fig.height = 5}
+edges <- network_artist_genre %>%
+  filter(!(genre %in% c("Non-Music", "Brass & Military", "Children's", "1"))) %>% 
+  filter(artists_artist_name %in% c("Elvis Presley")) %>%
+  select(artists_artist_name, genre) %>%
+  distinct() %>%
+  rename(source = artists_artist_name, target = genre) %>% 
+  mutate(source = factor(source, levels = c("Elvis Presley"))) %>% 
+  arrange(source)
+
+artists <- data.frame(artist = unique(edges$source))
+
+
+G <- tbl_graph(edges = edges) %>%
+  mutate(type = name == "Elvis Presley")
+
+layout <- create_layout(G, layout = "kk")
+
+ggraph(layout) +
+  geom_edge_link(colour = "black", width = 0.5, alpha = 0.8) +
+  geom_node_label(aes(label = str_wrap(name, width = 15), size = type, col = type), hjust = 0.5,
+                  label.padding = unit(0.15, "lines"),
+                  label.r= unit(0.1, "lines")) +
+  scale_color_manual(values = c("deepskyblue4","orangered2")) +
+  scale_size_discrete(range = c(5, 5)) +
+  coord_flip() +
+  theme(legend.position = "none") +
+  labs(title = "Elvis Presley and the Genres He was Associated With")
+
+ggsave("elvis_genre_association.svg")
+
+```
+
+
+```{r, fig.width = 12, fig.height = 5}
+
+# https://www.billboard.com/lists/top-10-artists-2024-list/4-drake/
+top_network_artist_now <- network_artist_genre %>% 
+  drop_na() %>% 
+  filter(!(genre %in% c("Non-Music", "Brass & Military", "Children's", "1"))) %>% 
+  filter(!(artists_artist_name %in% c("Various", "Unknown Artist", "No Artist", "\\",
+                                      "Albert Wieder", "Hans Zimmer", "Ena Pá 2000",
+                                      "James Last", "Elvis Costello", "Ennio Morricone",
+                                      "GANGI", "Brittle Brian", "Henri Salvador"))) %>%
+  group_by(artists_artist_name) %>% 
+  summarize(n_genres = n_distinct(genre)) %>%
+  ungroup() %>% 
+  arrange(desc(n_genres)) %>% 
+  filter(artists_artist_name %in% c("Taylor Swift", "Morgan Wallen", "Zach Bryan",
+                                    "Drake", "Sabrina Carpenter", "Billie Eilish", "SZA (2)", 
+                                    "Luke Combs", "Post Malone", "Kendrick Lamar")) %>% 
+  mutate(artists_artist_name = ifelse(artists_artist_name == "SZA (2)", "SZA", artists_artist_name))
+
+
+p2[[3]] <- top_network_artist_now %>% 
+  ggplot(aes(x = n_genres, y = reorder(artists_artist_name, n_genres))) +
+  geom_col(color = "black", fill = "deepskyblue4", alpha = 0.8) +
+  scale_x_continuous(expand = c(0, 0, 0.01, 0.01), breaks = seq(0, 12, 3),
+                     labels = seq(0, 12, 3),
+                     limits = c(0, 12)) +
+  theme(panel.grid.major.y = element_blank(),
+        plot.title = element_text(size = 14)) +
+  labs(y = "Artist", x = "Number of Distinct Genres",
+       title = "Most Popular Artists of 2024")
+
+
+p2[[4]] <- network_artist_genre %>% 
+  filter(!(genre %in% c("Non-Music", "Brass & Military", "Children's", "1"))) %>% 
+  filter(artists_artist_name %in% c("Taylor Swift", "Morgan Wallen", "Zach Bryan",
+                                    "Drake", "Sabrina Carpenter", "Billie Eilish", "SZA (2)", 
+                                    "Luke Combs", "Post Malone", "Kendrick Lamar")) %>% 
+  mutate(artists_artist_name = ifelse(artists_artist_name == "SZA (2)", "SZA", artists_artist_name)) %>%  
+  distinct(artists_artist_name, genre, .keep_all = T) %>% 
+  select(-release_genres_genre) %>% 
+  group_by(genre) %>% 
+  summarize(common_genres = n()) %>% 
+  arrange(desc(common_genres)) %>% 
+  ggplot(aes(x = common_genres, y = reorder(genre, common_genres))) +
+  geom_col(color = "black", fill = "orangered2", alpha = 0.8) +
+  scale_x_continuous(breaks = seq(0, 10, 2), expand = c(0, 0, 0.01, 0.01),
+                     limits = c(0, 10)) +
+  theme(panel.grid.major.y = element_blank(),
+        plot.title = element_text(size = 14)) +
+  labs(y = "Genre", x = "Number of Artists",
+       title = "Most Common Genres Among\nthe 10 Most Popular Artists of 2024")
+
+p2[[3]] + p2[[4]] +
+  plot_annotation(title = "Genre Diversity (Current)")
+
+
+ggsave("genre_diversity_now.svg")
+```
+
+
+```{r, fig.width = 9, fig.height = 5}
+
+survival_analysis <- read_csv("survival_releases.csv")
+
+trunc_survival <- survival_analysis %>% 
+  select(releases_release_master_id, releases_release_master_id_is_main_release, year_release, genres)
+
+
+originals <- trunc_survival %>%
+  filter(releases_release_master_id_is_main_release == TRUE) %>%
+ # filter(genres %in% c("Electronic", "Rock", "Pop", "Hip Hop", "Jazz")) %>% 
+  select(master_id = releases_release_master_id, year_release, genres)
+
+
+reissues <- trunc_survival %>%
+  filter(releases_release_master_id_is_main_release == FALSE) %>%
+  select(master_id = releases_release_master_id, year_reissue = year_release)
+
+
+first_reissue <- reissues %>%
+  group_by(master_id) %>%
+  summarise(first_reissue_year = min(year_reissue, na.rm = TRUE), .groups = "drop")
+
+survival_data <- originals %>%
+  left_join(first_reissue, by = "master_id")
+
+current_year <- year(Sys.Date())
+
+
+survival_data <- survival_data %>%
+  mutate(time_until_reissue = ifelse(is.na(first_reissue_year),
+                                     current_year - year_release,
+                                     first_reissue_year - year_release),
+         event = ifelse(is.na(first_reissue_year), 0, 1)) %>%
+  filter(time_until_reissue >= 0)
+
+
+p2[[5]] <- survival_data %>% 
+  count(event) %>% 
+  mutate(event_desc = ifelse(event == 0, "Yet to Have a Reissue",
+                             "At Least One Reissue")) %>% 
+  ggplot() +
+  geom_col(aes(x = event_desc, y = n, fill = event_desc), 
+           alpha = 0.8, show.legend = F, color = "black") +
+  theme(panel.grid.major.x = element_blank(),
+        plot.title = element_text(size = 14)) +
+  scale_fill_manual(values = c("springgreen4", "#C5050C")) +
+  scale_y_continuous(expand = c(0, 0, 0.1, 0.2), labels = label_number(scale = 1e-3, suffix = "K")) +
+  labs(y = "Number of Releases", x = "Status",
+       title = "Reissues")
+
+p2[[5]]
+ggsave("reissues.svg")
+
+```
+
+
+```{r, fig.width = 9, fig.height = 5}
+
+survival_data <- survival_data %>% 
+  mutate(genres = factor(genres, levels = c("Jazz", "Pop", "Rock", "Hip Hop", "Electronic")))
+
+km_fit <- survfit(Surv(time_until_reissue, event) ~ genres, data = survival_data)
+
+# Plot the survival curve
+p2[[6]] <- ggsurvplot(km_fit,
+           pval = TRUE,
+           risk.table = T,
+           xlab = "Years Since Original Release",
+           ylab = "Probability of Not Being Reissued",
+           palette = c("deepskyblue4", "orangered2", "#FB7DA8", "darkorchid3", "goldenrod2"),
+           title = "Survival of Music Releases Without Reissues",
+           legend.title = "",
+           legend = c(0.85, 0.75),
+           pval.coord = c(79, 0.3),
+           pval.size = 5,
+           legend.labs = c("Jazz", "Pop", "Rock", "Hip Hop", "Electronic"),
+           ggtheme = theme(plot.title = element_text(face = "bold", color = "black", size = 14),
+                           panel.grid.major.x = element_blank(),
+                           panel.grid.major.y = element_line(color = alpha("#d7d7d7", 0.2))))$plot
+
+p2[[6]]
+```
+
+
+```{r, fig.width = 12, fig.height = 5}
+p2[[5]] <- p2[[5]] +
+  theme(panel.grid.major.y = element_line(color = alpha("#d7d7d7", 0.2)))
+
+
+p2[[5]] + p2[[6]] +
+  plot_annotation(title = "Do Artists Remaster Their Original Release?")
+
+ggsave("survival_analysis.svg")
+```
+
+
+```{r}
+read_csv("artists.csv")
+```
+

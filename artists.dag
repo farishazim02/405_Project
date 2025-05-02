@@ -1,0 +1,15 @@
+# (pre)  split_artists.sh
+#              |
+#              V
+# (job)  process_artists.sub
+#            / | \
+# 10 parallel runs of process_artists.R
+#            \ | /
+#              V
+# (post) merge_artists.sh
+
+
+job 1 process_artists.sub
+
+script pre 1 split_artists.sh
+script post 1 merge_artists.sh

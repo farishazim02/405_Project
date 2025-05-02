@@ -1,0 +1,21 @@
+log    =    log/artists_setup_$(Process).log
+error  =  error/artists_setup_$(Process).err
+output = output/artists_setup_$(Process).out
+
+container_image = osdf:///ospool/uc-shared/public/OSG-Staff/xalim_stat/R_tidyverse_FITSio.sif
+
+executable = ./process_artists.sh
+arguments = $(file)
+
+should_transfer_files = YES
+when_to_transfer_output = ON_EXIT
+transfer_input_files = $(file), process_artists.R
+
+max_retries = 3
+periodic_release = (JobStatus == 5) && (NumJobStarts < 3)
+
+request_cpus = 2
+request_memory = 1GB
+request_disk = 1GB
+
+queue file from input_artists

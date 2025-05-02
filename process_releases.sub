@@ -1,0 +1,22 @@
+log    =    log/releases_$(Process).log
+error  =  error/releases_$(Process).err
+output = output/releases_$(Process).out
+
+container_image = osdf:///ospool/uc-shared/public/OSG-Staff/xalim_stat/R_tidyverse_FITSio.sif
+
+# Usage: ./process_releases.sh [.R] [small_file]
+executable = ./process_releases.sh
+arguments = survival_analysis.R $(file)
+
+should_transfer_files = YES
+when_to_transfer_output = ON_EXIT
+transfer_input_files = file:///staging/groups/stat_dscp/group05/releases_setup/data/$(file), survival_analysis.R
+
+max_retries = 3
+periodic_release = (JobStatus == 5) && (NumJobStarts < 3)
+
+request_cpus = 2
+request_memory = 1.5GB
+request_disk = 1.5GB
+
+queue file from input_releases

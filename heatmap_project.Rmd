@@ -1,0 +1,69 @@
+---
+title: "heatmap project"
+author: "Imran Iskander"
+date: "2025-04-27"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+
+# Load data
+cooccurrence <- read_csv("final_cooccurrence.csv")
+
+# Filter: Only strong connections
+cooccurrence_filtered <- cooccurrence %>%
+  filter(n > 50)
+
+# Calculate top genres and styles
+top_genres <- cooccurrence_filtered %>%
+  group_by(Genre) %>%
+  summarise(total = sum(n)) %>%
+  arrange(desc(total)) %>%
+  slice_head(n = 10) %>%
+  pull(Genre)
+
+top_styles <- cooccurrence_filtered %>%
+  group_by(Style) %>%
+  summarise(total = sum(n)) %>%
+  arrange(desc(total)) %>%
+  slice_head(n = 20) %>%
+  pull(Style)
+
+# Filter data to only top
+heatmap_data <- cooccurrence_filtered %>%
+  filter(Genre %in% top_genres, Style %in% top_styles)
+
+# Make Genre and Style ordered factors based on total n
+heatmap_data <- heatmap_data %>%
+  mutate(
+    Genre = fct_reorder(Genre, n, .fun = sum, .desc = TRUE),
+    Style = fct_reorder(Style, n, .fun = sum, .desc = TRUE)
+  )
+
+# Plot heatmap
+ggplot(heatmap_data, aes(x = Style, y = Genre, fill = n)) +
+  geom_tile(color = "white", linewidth = 0.5) +
+  scale_fill_viridis_c(option = "inferno", trans = "log1p", direction = -1) +
+  theme_minimal(base_size = 12) +
+  labs(
+    title = "Top Genres vs Top Styles Co-occurrence Heatmap",
+    x = "Style",
+    y = "Genre",
+    fill = "Count"
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 45, vjust = 1, hjust=1, size = 10),
+    axis.text.y = element_text(size = 10),
+    panel.grid = element_blank()
+  )
+
+
+```
+```{r}
+ggsave("heatmap.svg", width = 10, height = 6, device = "svg")
+
+```
+
+
